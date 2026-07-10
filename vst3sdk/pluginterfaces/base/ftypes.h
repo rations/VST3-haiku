@@ -106,6 +106,7 @@ namespace Steinberg
 	const FIDString kPlatformStringMac = "MAC";
 	const FIDString kPlatformStringIOS = "IOS";
 	const FIDString kPlatformStringLinux = "Linux";
+	const FIDString kPlatformStringHaiku = "Haiku";
 #if SMTG_OS_WINDOWS
 	const FIDString kPlatformString = kPlatformStringWin;
 #elif SMTG_OS_IOS
@@ -114,6 +115,8 @@ namespace Steinberg
 	const FIDString kPlatformString = kPlatformStringMac;
 #elif SMTG_OS_LINUX
 	const FIDString kPlatformString = kPlatformStringLinux;
+#elif SMTG_OS_HAIKU
+	const FIDString kPlatformString = kPlatformStringHaiku;
 #endif
 
 //------------------------------------------------------------------------
@@ -161,7 +164,7 @@ namespace Steinberg
 // always inline macros (only when RELEASE is 1)
 //----------------------------------------------------------------------------
 #if defined(RELEASE) && RELEASE
-    #if SMTG_OS_MACOS || SMTG_OS_LINUX || defined(__MINGW32__)
+    #if SMTG_OS_MACOS || SMTG_OS_LINUX || SMTG_OS_HAIKU || defined(__MINGW32__)
 		#define SMTG_ALWAYS_INLINE	__inline__ __attribute__((__always_inline__))
 		#define SMTG_NEVER_INLINE __attribute__((noinline))
 	#elif SMTG_OS_WINDOWS

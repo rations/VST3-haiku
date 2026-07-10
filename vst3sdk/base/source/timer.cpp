@@ -315,7 +315,7 @@ Timer* Timer::create (ITimerCallback* callback, uint32 milliseconds)
 //------------------------------------------------------------------------
 } // namespace Steinberg
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 
 #include <cassert>
 #include <time.h>

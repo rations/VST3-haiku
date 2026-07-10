@@ -36,7 +36,7 @@
 	#else
 		#pragma pack(8)
 	#endif
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	#if SMTG_PLATFORM_64
 		#pragma pack(push, 16)
 	#else

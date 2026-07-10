@@ -28,7 +28,7 @@
 		constexpr Operator##Check##Type ()                                                         \
 		{                                                                                          \
 			static_assert (Operator (Type) ==                                                      \
-			                   (SMTG_PLATFORM_64 ? w : SMTG_OS_MACOS ? x : SMTG_OS_LINUX ? z : y), \
+			                   (SMTG_PLATFORM_64 ? w : SMTG_OS_MACOS ? x : (SMTG_OS_LINUX || SMTG_OS_HAIKU) ? z : y), \
 			               "Struct " #Operator " error: " #Type);                                     \
 		}                                                                                          \
 	};                                                                                             \

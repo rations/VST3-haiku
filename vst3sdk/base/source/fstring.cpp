@@ -218,7 +218,7 @@ static inline Steinberg::int32 sprintf16 (Steinberg::char16* str, const Steinber
 	return vsnwprintf (str, static_cast<size_t> (-1), format, marker);
 }
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 #include <cassert>
 #include <codecvt>
 #include <cstring>
@@ -1547,7 +1547,7 @@ char16 ConstString::toLower (char16 c)
 			return characters[0];
 	}
 	return c;
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	assert (false && "DEPRECATED No Linux implementation");
 	return c;
 #else
@@ -1577,7 +1577,7 @@ char16 ConstString::toUpper (char16 c)
 			return characters[0];
 	}
 	return c;
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	assert (false && "DEPRECATED No Linux implementation");
 	return c;
 #else
@@ -1854,7 +1854,7 @@ int32 ConstString::multiByteToWideString (char16* dest, const char8* source, int
 	}
 #endif
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 	if (sourceCodePage == kCP_ANSI || sourceCodePage == kCP_US_ASCII || sourceCodePage == kCP_Utf8)
 	{
 		if (dest == nullptr)
@@ -1917,7 +1917,7 @@ int32 ConstString::wideStringToMultiByte (char8* dest, const char16* wideString,
 	}
 	return result;
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	int32 result = 0;
 	if (destCodePage == kCP_Utf8)
 	{

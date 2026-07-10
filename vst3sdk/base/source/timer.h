@@ -153,7 +153,7 @@ private:
 	bool oldState;
 };
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 using CreateTimerFunc = Timer* (*)(ITimerCallback* callback, uint32 intervalMilliseconds);
 void InjectCreateTimerFunction (CreateTimerFunc f);
 #endif

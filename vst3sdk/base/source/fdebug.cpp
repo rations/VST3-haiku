@@ -28,7 +28,7 @@ bool AmIBeingDebugged ()
 }
 #endif
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>

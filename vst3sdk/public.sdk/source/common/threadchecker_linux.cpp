@@ -16,7 +16,7 @@
 
 #include "threadchecker.h"
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 
 #include <cstdio> 
 #include <pthread.h>

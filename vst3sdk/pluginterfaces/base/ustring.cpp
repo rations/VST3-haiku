@@ -26,7 +26,7 @@
 #elif SMTG_OS_MACOS
 #include <CoreFoundation/CoreFoundation.h>
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 #include <cstring>
 #include <string>
 #include <codecvt>
@@ -42,7 +42,7 @@
 namespace Steinberg {
 
 //------------------------------------------------------------------------
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 
 //------------------------------------------------------------------------
 namespace {
@@ -158,7 +158,7 @@ bool UString::scanFloat (double& value) const
 	}
 	return false;
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	auto str = converter ().to_bytes (thisBuffer);
 	return sscanf (str.data (), "%lf", &value) == 1;
 
@@ -186,7 +186,7 @@ bool UString::printFloat (double value, int32 precision)
 		return true;
 	}
 	return result;
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	auto utf8Buffer = reinterpret_cast<char*> (thisBuffer);
 	auto len = snprintf (utf8Buffer, thisSize, "%.*lf", precision, value);
 	if (len > 0)
@@ -223,7 +223,7 @@ bool UString::scanInt (int64& value) const
 	}
 	return false;
 
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	auto str = converter ().to_bytes (thisBuffer);
 	return sscanf (str.data (), "%lld", &value) == 1;
 
@@ -251,7 +251,7 @@ bool UString::printInt (int64 value)
 		return true;
 	}
 	return false;
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	auto utf8Buffer = reinterpret_cast<char*> (thisBuffer);
 	auto len = snprintf (utf8Buffer, thisSize, "%lld", value);
 	if (len > 0)

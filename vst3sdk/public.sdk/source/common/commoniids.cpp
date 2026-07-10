@@ -27,7 +27,7 @@ DEF_CLASS_IID (IPlugFrame)
 //----VST 3.6.0--------------------------------
 DEF_CLASS_IID (IPlugViewContentScaleSupport)
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 DEF_CLASS_IID (Linux::IEventHandler)
 DEF_CLASS_IID (Linux::ITimerHandler)
 DEF_CLASS_IID (Linux::IRunLoop)

@@ -49,7 +49,7 @@ namespace Steinberg { using PlatformModuleHandle = HINSTANCE; }
 typedef struct __CFBundle* CFBundleRef;
 namespace Steinberg { using PlatformModuleHandle = CFBundleRef; }
 //------------------------------------------------------------------------
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 namespace Steinberg { using PlatformModuleHandle = void*; }
 #endif
 

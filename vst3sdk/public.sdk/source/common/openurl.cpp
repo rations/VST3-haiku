@@ -50,6 +50,12 @@ bool openURLInDefaultApplication (const String& address)
 	cmd += address.text8 ();
 	cmd += "\"";
 	res = (system (cmd) == 0);
+#elif SMTG_OS_HAIKU
+	String cmd;
+	cmd += "open \"";
+	cmd += address.text8 ();
+	cmd += "\"";
+	res = (system (cmd) == 0);
 #endif
 	return res;
 }

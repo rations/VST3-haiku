@@ -21,7 +21,7 @@
 	#pragma -a-
 #elif SMTG_OS_WINDOWS
 	#pragma pack(pop)
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 	#pragma pack(pop)
 #endif
 //---------------------------------------------------------------------------------------------------

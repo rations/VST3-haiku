@@ -16,7 +16,7 @@
 
 #include "pluginfactory.h"
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 #include "pluginterfaces/base/funknownimpl.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "base/source/timer.h"
@@ -250,7 +250,7 @@ tresult PLUGIN_API CPluginFactory::createInstance (FIDString cid, FIDString _iid
 	return kNoInterface;
 }
 
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 //------------------------------------------------------------------------
 namespace /*anonymous*/ {
 
@@ -312,7 +312,7 @@ tresult PLUGIN_API CPluginFactory::setHostContext (FUnknown* context)
 {
 	std::for_each (hostContextCallbacks.begin (), hostContextCallbacks.end (),
 	               [context] (const auto& cb) { cb (context); });
-#if SMTG_OS_LINUX
+#if SMTG_OS_LINUX || SMTG_OS_HAIKU
 	if (auto runLoop = U::cast<Linux::IRunLoop> (context))
 	{
 		LinuxPlatformTimer::runLoop = runLoop;

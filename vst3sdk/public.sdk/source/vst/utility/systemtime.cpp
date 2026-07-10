@@ -89,15 +89,21 @@ static Steinberg::Vst::SystemTime::GetImplFunc makeNativeGetSystemTimeFunc ()
 	}
 	return [] () { return std::numeric_limits<Steinberg::int64>::max (); };
 }
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 //------------------------------------------------------------------------
 #include <time.h>
 static uint64_t getUptimeByClockGettime ()
 {
 	struct timespec time_spec;
 
+#if SMTG_OS_HAIKU
+	// Haiku has no CLOCK_BOOTTIME; CLOCK_MONOTONIC counts from boot there.
+	if (clock_gettime (CLOCK_MONOTONIC, &time_spec) != 0)
+		return 0;
+#else
 	if (clock_gettime (CLOCK_BOOTTIME, &time_spec) != 0)
 		return 0;
+#endif
 
 	const uint64_t uptime = time_spec.tv_sec * 1000 + time_spec.tv_nsec / 1000000;
 	return uptime;

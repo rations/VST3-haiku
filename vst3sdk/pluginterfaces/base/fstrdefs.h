@@ -47,7 +47,7 @@
 #define FORMAT_INT64A "I64d"
 #define FORMAT_UINT64A "I64u"
 
-#elif SMTG_OS_MACOS || SMTG_OS_LINUX
+#elif SMTG_OS_MACOS || SMTG_OS_LINUX || SMTG_OS_HAIKU
 #define FORMAT_INT64A  "lld"
 #define FORMAT_UINT64A "llu"
 #define stricmp		strcasecmp
@@ -75,7 +75,7 @@
 #elif SMTG_OS_MACOS
 #define ENDLINE_A   "\r"
 #define ENDLINE_W   STR ("\r")
-#elif SMTG_OS_LINUX
+#elif SMTG_OS_LINUX || SMTG_OS_HAIKU
 #define ENDLINE_A   "\n"
 #define ENDLINE_W   STR ("\n")
 #endif
