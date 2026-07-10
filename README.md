@@ -20,10 +20,10 @@ repository — VST3 plugin hosting and plugins.
   - CMake: `SMTG_HAIKU` platform detection and `Contents/x86_64-haiku/` bundle layout
 - `hosts/vst3jackhost/` — a headless VST3 host on JACK with an interactive parameter REPL
   (list parameters, set values live — no GUI required).
-- `plugins/namku/` — **NAMku**, a Neural Amp Modeler plugin written directly against the
-  SDK (no framework), reusing the MIT
-  [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) and
-  [AudioDSPTools](https://github.com/sdatkinson/AudioDSPTools) by Steven Atkinson.
+Plug-ins built on this port live in their own repositories —
+[NAMku](https://github.com/rations/NAMku), a Neural Amp Modeler plugin written directly
+against the SDK (no framework), is built automatically when checked out as a sibling
+directory of this one (see the `NAMKU_DIR` cache variable).
 
 Plugin bundles use `<name>.vst3/Contents/x86_64-haiku/<name>.so` and are searched in the
 Haiku add-on directories (`.../config/non-packaged/add-ons/vst3`, packaged equivalents)
@@ -53,5 +53,4 @@ or use the convenience `Makefile` wrapper: `make configure build`.
 MIT — see [LICENSE](LICENSE). The vendored VST 3 SDK is MIT-licensed by Steinberg Media
 Technologies GmbH (see `vst3sdk/LICENSE.txt`). "VST" is a trademark of Steinberg Media
 Technologies GmbH; this project is an unofficial community port and is not affiliated with
-or endorsed by Steinberg. NAM DSP components are MIT, Copyright (c) Steven Atkinson;
-Eigen is MPL2.
+or endorsed by Steinberg.

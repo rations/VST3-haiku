@@ -18,6 +18,7 @@ add_executable(vst3jackhost
     ${AUDIOHOST_DIR}/source/media/jack/jackclient.cpp
     ${SDK_DIR}/public.sdk/source/vst/hosting/plugprovider.cpp
     ${SDK_DIR}/public.sdk/source/vst/hosting/module_haiku.cpp
+    ${SDK_DIR}/public.sdk/source/common/memorystream.cpp
 )
 
 target_compile_features(vst3jackhost
