@@ -41,6 +41,13 @@ if(SMTG_ENABLE_VST3_HOSTING_EXAMPLES)
             )
             set(audiohost_PLATFORM_LIBS)
             set(APP_PROPERTIES)
+        elseif(SMTG_HAIKU)
+            set(audiohost_sources
+                ${audiohost_sources}
+                "${SDK_ROOT}/public.sdk/source/vst/hosting/module_haiku.cpp"
+            )
+            set(audiohost_PLATFORM_LIBS)
+            set(APP_PROPERTIES)
         elseif(SMTG_WIN)
             set(audiohost_sources
                 ${audiohost_sources}

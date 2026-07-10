@@ -20,7 +20,7 @@ macro(smtg_setup_platform_toolset)
     #------------
     option(SMTG_ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
 
-    if(SMTG_LINUX)
+    if(SMTG_LINUX OR SMTG_HAIKU)
         if(SMTG_ENABLE_ADDRESS_SANITIZER)
             set(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES};ASan")
             add_compile_options($<$<CONFIG:ASan>:-DDEVELOPMENT=1>)
@@ -35,7 +35,7 @@ macro(smtg_setup_platform_toolset)
         set(common_linker_flags "-Wl,--no-undefined")
         set(CMAKE_MODULE_LINKER_FLAGS "${common_linker_flags}" CACHE STRING "Module Library Linker Flags")
         set(CMAKE_SHARED_LINKER_FLAGS "${common_linker_flags}" CACHE STRING "Shared Library Linker Flags")
-    endif(SMTG_LINUX)
+    endif(SMTG_LINUX OR SMTG_HAIKU)
 
     #------------
     if(UNIX)
@@ -60,6 +60,13 @@ macro(smtg_setup_platform_toolset)
                 if(ANDROID)
                     set(CMAKE_ANDROID_STL_TYPE c++_static)
                     link_libraries(dl)
+                elseif(SMTG_HAIKU)
+                    # Haiku has no separate stdc++fs/pthread/dl libraries:
+                    # std::filesystem is in libstdc++, pthreads and dl(open)
+                    # live in libroot which is linked implicitly.
+                    # Haiku executables are ET_DYN (linked like shared
+                    # objects), so -fPIE is not enough: force full -fPIC.
+                    add_compile_options(-fPIC)
                  else()
                     link_libraries(stdc++fs pthread dl)
                 endif(ANDROID)

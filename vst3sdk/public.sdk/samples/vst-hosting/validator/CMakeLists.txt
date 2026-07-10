@@ -107,6 +107,11 @@ elseif(SMTG_LINUX)
         ${validator_sources}
         ${SDK_ROOT}/public.sdk/source/vst/hosting/module_linux.cpp
     )
+elseif(SMTG_HAIKU)
+    set(validator_sources
+        ${validator_sources}
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/module_haiku.cpp
+    )
 elseif(SMTG_WIN)
     set(validator_sources
         ${validator_sources}

@@ -183,9 +183,9 @@ function(smtg_target_add_library_main target)
                 PRIVATE 
                     ${public_sdk_SOURCE_DIR}/source/main/dllmain.cpp
             )
-        elseif(SMTG_LINUX)
-            target_sources (${target} 
-                PRIVATE 
+        elseif(SMTG_LINUX OR SMTG_HAIKU)
+            target_sources (${target}
+                PRIVATE
                     ${public_sdk_SOURCE_DIR}/source/main/linuxmain.cpp
             )
         endif(SMTG_MAC)
@@ -216,7 +216,11 @@ function(smtg_get_linux_architecture_name)
                 OUTPUT_VARIABLE ARCHITECTURE
             )
         endif()
-        set(LINUX_ARCHITECTURE_NAME ${ARCHITECTURE}-linux PARENT_SCOPE)
+        if(SMTG_HAIKU)
+            set(LINUX_ARCHITECTURE_NAME ${ARCHITECTURE}-haiku PARENT_SCOPE)
+        else()
+            set(LINUX_ARCHITECTURE_NAME ${ARCHITECTURE}-linux PARENT_SCOPE)
+        endif(SMTG_HAIKU)
     endif(ANDROID)
 endfunction(smtg_get_linux_architecture_name)
 
@@ -412,9 +416,9 @@ function(smtg_target_make_plugin_package target pkg_name extension)
                     LINK_FLAGS_RELEASE /DEBUG
             )
         endif(MSVC)
-    elseif(SMTG_LINUX)
+    elseif(SMTG_LINUX OR SMTG_HAIKU)
         smtg_get_linux_architecture_name() # Sets var LINUX_ARCHITECTURE_NAME
-        message(STATUS "[SMTG] Linux architecture name is ${LINUX_ARCHITECTURE_NAME}.")
+        message(STATUS "[SMTG] Architecture name is ${LINUX_ARCHITECTURE_NAME}.")
 
         get_target_property(PLUGIN_PACKAGE_CONTENTS ${target} SMTG_PLUGIN_PACKAGE_CONTENTS)
         set_target_properties(${target}
@@ -462,7 +466,7 @@ endfunction()
 # @param input_file resource file
 # @param ARGV2 destination subfolder inside the Resource folder [optional]
 function(smtg_target_add_plugin_resource target input_file)
-    if(SMTG_LINUX OR (SMTG_WIN AND SMTG_CREATE_BUNDLE_FOR_WINDOWS))
+    if(SMTG_LINUX OR SMTG_HAIKU OR (SMTG_WIN AND SMTG_CREATE_BUNDLE_FOR_WINDOWS))
         get_target_property(PLUGIN_PACKAGE_PATH ${target} SMTG_PLUGIN_PACKAGE_PATH)
         get_target_property(PLUGIN_PACKAGE_RESOURCES ${target} SMTG_PLUGIN_PACKAGE_RESOURCES)
 
@@ -523,7 +527,7 @@ function(smtg_target_add_plugin_resource target input_file)
             PROPERTIES 
                 MACOSX_PACKAGE_LOCATION "${destination_folder}"
         )
-    endif(SMTG_LINUX OR (SMTG_WIN AND SMTG_CREATE_BUNDLE_FOR_WINDOWS))
+    endif(SMTG_LINUX OR SMTG_HAIKU OR (SMTG_WIN AND SMTG_CREATE_BUNDLE_FOR_WINDOWS))
 endfunction(smtg_target_add_plugin_resource)
 
 #------------------------------------------------------------------------

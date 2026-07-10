@@ -1,6 +1,13 @@
 
 if(SMTG_ENABLE_VST3_HOSTING_EXAMPLES)
 
+    if(SMTG_HAIKU)
+        # No editorhost platform backend for Haiku yet: it needs a native
+        # window implementation and an IRunLoop provider. Headless hosting
+        # (validator, audiohost) is unaffected.
+        return()
+    endif(SMTG_HAIKU)
+
     set(editorhost_sources
         ${SDK_ROOT}/public.sdk/source/vst/hosting/plugprovider.cpp
         ${SDK_ROOT}/public.sdk/source/vst/hosting/plugprovider.h
