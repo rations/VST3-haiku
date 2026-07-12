@@ -1,0 +1,28 @@
+name			vst3_haiku
+version			0.1.0-1
+architecture	x86_64
+summary			"JACK VST3 host and example VST3 plug-ins (Haiku)"
+description		"A headless JACK VST3 host (vst3jackhost) built on the Haiku port of
+the Steinberg VST3 SDK, plus the SDK's example plug-ins (adelay, the mda suite, ...).
+Handy for trying VST3 plug-ins against JACK without a DAW. The VST3 SDK itself is a
+build-time dependency of JackDAW and the plug-ins and is linked statically."
+packager		"rations <ehqcar@proton.me>"
+vendor			"rations"
+copyrights {
+	"2025 Steinberg Media Technologies GmbH"
+	"2026 rations"
+}
+licenses {
+	"MIT"
+}
+provides {
+	vst3_haiku = 0.1.0
+	cmd:vst3jackhost = 0.1.0
+}
+requires {
+	haiku
+	jack
+}
+urls {
+	"https://github.com/rations/VST3-haiku"
+}

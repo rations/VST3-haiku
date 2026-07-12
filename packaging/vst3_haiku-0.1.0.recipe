@@ -1,0 +1,48 @@
+# HaikuPorts recipe for VST3-haiku (JACK VST3 host + example plug-ins).
+#
+# NOT YET VALIDATED with haikuporter — verify with `haikuporter -c vst3_haiku` and pin
+# SOURCE_URI to a tag/commit. Note the tree vendors the Steinberg VST3 SDK (MIT).
+SUMMARY="JACK VST3 host and example VST3 plug-ins (Haiku)"
+DESCRIPTION="A headless JACK VST3 host (vst3jackhost) built on the Haiku port of the \
+Steinberg VST3 SDK, plus the SDK's example plug-ins (adelay, the mda suite, ...)."
+HOMEPAGE="https://github.com/rations/VST3-haiku"
+COPYRIGHT="2025 Steinberg Media Technologies GmbH; 2026 rations"
+LICENSE="MIT"
+REVISION="1"
+SOURCE_URI="git+https://github.com/rations/VST3-haiku#master"
+SOURCE_DIR="VST3-haiku"
+ARCHITECTURES="x86_64"
+
+PROVIDES="
+	vst3_haiku = 0.1.0
+	cmd:vst3jackhost = 0.1.0
+	"
+REQUIRES="
+	haiku
+	jack
+	"
+BUILD_REQUIRES="
+	haiku_devel
+	jack
+	devel:libjack
+	cmd:cmake
+	cmd:ninja
+	cmd:pkg_config
+	"
+
+BUILD()
+{
+	cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAMKU_DIR=/nonexistent
+	ninja -C build
+}
+
+INSTALL()
+{
+	mkdir -p $binDir $addOnsDir/vst3
+	host=$(find build -type f -name vst3jackhost | head -1)
+	cp "$host" $binDir/vst3jackhost
+	find build -type d -name '*.vst3' | while read -r b; do
+		case "$(basename "$b")" in NAMku.vst3|DRUMku.vst3) continue ;; esac
+		cp -r "$b" $addOnsDir/vst3/
+	done
+}

@@ -48,6 +48,13 @@ ninja -C build
 
 or use the convenience `Makefile` wrapper: `make configure build`.
 
+## Packaging (Haiku)
+
+Build a distributable package with `packaging/make-hpkg.sh` (produces
+`vst3_haiku-0.1.0-1-x86_64.hpkg`: the `vst3jackhost` binary plus the SDK example
+plug-ins), or install from source with `build-from-source.sh`. A HaikuPorts recipe is in
+`packaging/vst3_haiku-0.1.0.recipe`. See the stack overview in `jackDAW-haiku/STACK.md`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). The vendored VST 3 SDK is MIT-licensed by Steinberg Media
