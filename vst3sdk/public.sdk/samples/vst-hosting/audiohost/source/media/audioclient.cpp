@@ -164,6 +164,8 @@ bool AudioClient::initialize (const Name& name, IComponent* _component, IMidiMap
 	initProcessData ();
 
 	paramTransferrer.setMaxParameters (1000);
+	outputParamTransferrer.setMaxParameters (1000);
+	outputParameterChanges.setMaxParameters (1000);
 
 	if (midiMapping)
 		midiCCMapping = initMidiCtrlerAssignment (component, midiMapping);
@@ -192,6 +194,7 @@ void AudioClient::initProcessData ()
 
 	processData.inputEvents = &eventList;
 	processData.inputParameterChanges = &inputParameterChanges;
+	processData.outputParameterChanges = &outputParameterChanges;
 	processData.processContext = &processContext;
 
 	initProcessContext ();
@@ -293,6 +296,8 @@ void AudioClient::postprocess (Buffers& buffers)
 {
 	eventList.clear ();
 	inputParameterChanges.clearQueue ();
+	outputParamTransferrer.transferChangesFrom (outputParameterChanges);
+	outputParameterChanges.clearQueue ();
 	unassignBusBuffers (buffers, processData);
 }
 

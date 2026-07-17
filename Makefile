@@ -37,7 +37,7 @@ validate:
 	@for bundle in $(VST3_INSTALL_DIR)/*.vst3; do \
 		[ -d "$$bundle" ] || continue; \
 		echo "== validator $$bundle =="; \
-		$(BUILD_DIR)/bin/validator "$$bundle" || exit 2; \
+		$(BUILD_DIR)/bin/$(BUILD_TYPE)/validator "$$bundle" || exit 2; \
 	done
 
 clean:

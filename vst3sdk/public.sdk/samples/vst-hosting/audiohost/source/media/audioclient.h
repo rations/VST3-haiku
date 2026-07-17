@@ -73,6 +73,11 @@ public:
 
 	bool initialize (const Name& name, IComponent* component, IMidiMapping* midiMapping);
 
+	/** Output parameter changes written by the processor during process (), transferred
+	 *	off the real-time thread. Drain from the UI thread (e.g. via a timer) and forward
+	 *	each change to IEditController::setParamNormalized. */
+	ParameterChangeTransfer& getOutputParamTransferrer () { return outputParamTransferrer; }
+
 //--------------------------------------------------------------------
 private:
 	void createLocalMediaServer (const Name& name);
@@ -93,8 +98,10 @@ private:
 	ProcessContext processContext;
 	EventList eventList;
 	ParameterChanges inputParameterChanges;
+	ParameterChanges outputParameterChanges;
 	IComponent* component = nullptr;
 	ParameterChangeTransfer paramTransferrer;
+	ParameterChangeTransfer outputParamTransferrer;
 
 	MidiCCMapping midiCCMapping;
 	IMediaServerPtr mediaServer;

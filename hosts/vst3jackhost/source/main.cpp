@@ -1,18 +1,23 @@
-// vst3jackhost — headless VST3 host for Haiku on JACK, with a stdin parameter REPL.
+// vst3jackhost — VST3 host for Haiku on JACK, with a stdin parameter REPL and an
+// optional native editor window (IPlugView, kPlatformTypeHaikuBView).
 //
 // Loads one VST3 audio-effect class from a .vst3 bundle, wires it between JACK
 // ports (reusing the SDK audiohost sample's AudioClient/JackClient), and lets the
-// user inspect and change parameters from the terminal — no GUI needed. Parameter
-// changes reach the real-time thread only through AudioClient's lock-free
-// ParameterChangeTransfer; the IEditController is only ever touched from this
-// (main) thread.
+// user inspect and change parameters from the terminal. Parameter changes reach
+// the real-time thread only through AudioClient's lock-free ParameterChangeTransfer.
+//
+// Threading: main() owns the BApplication and runs its message loop; the REPL
+// runs on a separate thread. While no editor window is open, the REPL touches
+// the IEditController directly; once one is open, every controller-touching
+// command is marshaled to the window's looper thread (EditorWindow::kMsgExec,
+// synchronous), so the controller is only ever driven from one thread at a time.
 //
 // Usage:
 //   vst3jackhost <plugin.vst3> [--uid <class-UID>]
 //   vst3jackhost <plugin.vst3> --list
 //
 // REPL commands: help, list, params, get <id>, set <id> <normalized 0..1>,
-//                savestate <file>, loadstate <file>, quit
+//                editor, editor close, savestate <file>, loadstate <file>, quit
 
 #include "public.sdk/samples/vst-hosting/audiohost/source/media/audioclient.h"
 #include "public.sdk/source/common/memorystream.h"
@@ -22,14 +27,23 @@
 #include "public.sdk/source/vst/utility/stringconvert.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/vst/ivstmessage.h"
 
+#include "editorwindow.h"
 #include "inamfileloader.h"
 
+#include <Application.h>
+#include <Messenger.h>
+#include <OS.h>
+
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace Steinberg;
@@ -98,6 +112,8 @@ void printHelp(bool hasFileLoader)
            "  params            list all parameters with current values\n"
            "  get <id>          show one parameter\n"
            "  set <id> <value>  set parameter (normalized 0..1)\n"
+           "  editor            open the plug-in's native editor window\n"
+           "  editor close      close the editor window\n"
            "  list              list classes in the module\n"
            "  savestate <file>  save the plug-in state to a file\n"
            "  loadstate <file>  restore the plug-in state from a file\n"
@@ -111,6 +127,43 @@ void printHelp(bool hasFileLoader)
                "  clearir           unload the impulse response\n"
                "  files             show currently loaded files\n");
 }
+
+// PlugProvider whose component<->controller connection works from any
+// non-RT thread. The SDK's ConnectionProxy discards messages sent off the
+// thread it was created on ("UI main thread"); Haiku has no such single UI
+// thread — the plug-in's editor lives on its BWindow's looper thread — so the
+// proxies would silently drop every editor-originated message (file loads,
+// MIDI-learn arming). A direct IConnectionPoint connection has no thread
+// guard; plug-in notify() implementations must be message-thread-safe, which
+// the VST3 threading model requires of them anyway.
+class DirectPlugProvider : public Vst::PlugProvider
+{
+public:
+    using Vst::PlugProvider::PlugProvider;
+
+    bool connectDirect()
+    {
+        if (!component || !controller)
+            return false;
+        disconnectComponents(); // drop the thread-affine proxies
+        auto compICP = U::cast<Vst::IConnectionPoint>(component);
+        auto contrICP = U::cast<Vst::IConnectionPoint>(controller);
+        if (!compICP || !contrICP)
+            return false;
+        return compICP->connect(contrICP) == kResultTrue &&
+               contrICP->connect(compICP) == kResultTrue;
+    }
+
+    void disconnectDirect()
+    {
+        auto compICP = U::cast<Vst::IConnectionPoint>(component);
+        auto contrICP = U::cast<Vst::IConnectionPoint>(controller);
+        if (compICP && contrICP) {
+            compICP->disconnect(contrICP);
+            contrICP->disconnect(compICP);
+        }
+    }
+};
 
 } // namespace
 
@@ -136,6 +189,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "usage: vst3jackhost <plugin.vst3> [--uid <class-UID>] [--list]\n");
         return 1;
     }
+
+    // The BApplication must exist before any window/BMessageRunner is created;
+    // its message loop runs on this (main) thread at the bottom of main().
+    BApplication app("application/x-vnd.VST3-haiku-vst3jackhost");
 
     // The host context must be in place before any plug-in code runs.
     Vst::PluginContextFactory::instance().setPluginContext(new Vst::HostApplication());
@@ -163,14 +220,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    IPtr<Vst::PlugProvider> plugProvider;
+    IPtr<DirectPlugProvider> plugProvider;
     std::string className;
     for (auto &classInfo : factory.classInfos()) {
         if (classInfo.category() != kVstAudioEffectClass)
             continue;
         if (effectID && *effectID != classInfo.ID())
             continue;
-        plugProvider = owned(new Vst::PlugProvider(factory, classInfo, true));
+        plugProvider = owned(new DirectPlugProvider(factory, classInfo, true));
         className = classInfo.name();
         break;
     }
@@ -178,6 +235,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "no matching audio-effect class in '%s' (try --list)\n", path.c_str());
         return 1;
     }
+    if (!plugProvider->connectDirect())
+        fprintf(stderr, "warning: direct component/controller connection failed\n");
 
     OPtr<Vst::IComponent> component = plugProvider->getComponent();
     OPtr<Vst::IEditController> controller = plugProvider->getController();
@@ -193,6 +252,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Route the editor's parameter edits (IComponentHandler::performEdit) to
+    // the RT thread; PlugProvider does not install any handler on its own.
+    ComponentHandler componentHandler([&audioClient](Vst::ParamID id, Vst::ParamValue value) {
+        audioClient->setParameter(id, value, 0);
+    });
+    if (controller->setComponentHandler(&componentHandler) != kResultOk)
+        fprintf(stderr, "warning: plug-in refused the component handler\n");
+
     // Optional file-loading extension (NAMku and friends): discovered purely
     // via queryInterface, so unknown plug-ins are unaffected.
     IPtr<NAMku::INamFileLoader> fileLoader;
@@ -207,149 +274,232 @@ int main(int argc, char *argv[])
         printf("plug-in supports file loading (loadmodel/loadir)\n");
     printf("JACK client '%s' is running; type 'help' for commands.\n", className.c_str());
 
-    std::string line;
-    while (true) {
-        printf("> ");
-        fflush(stdout);
-        if (!std::getline(std::cin, line))
-            break;
-        std::istringstream iss(line);
-        std::string cmd;
-        iss >> cmd;
-        if (cmd.empty())
-            continue;
-        if (cmd == "quit" || cmd == "exit")
-            break;
-        if (cmd == "help") {
-            printHelp(fileLoader != nullptr);
-        } else if (cmd == "list") {
-            printClasses(factory);
-        } else if (cmd == "params") {
-            printParams(controller);
-        } else if (cmd == "get") {
-            unsigned long id;
-            if (iss >> id)
-                printParam(controller, static_cast<Vst::ParamID>(id));
-            else
-                printf("usage: get <id>\n");
-        } else if (cmd == "set") {
-            unsigned long id;
-            double value;
-            if (iss >> id >> value) {
-                if (value < 0.0 || value > 1.0) {
-                    printf("value must be normalized (0..1)\n");
+    // Editor window state, owned by the REPL thread. `editorAlive` is cleared
+    // by the window's destructor (window looper thread).
+    std::atomic<bool> editorAlive{false};
+    BMessenger editorMessenger;
+
+    // Run `fn` on the window looper thread when an editor is open (synchronous
+    // round trip), directly otherwise. Falls back to a direct call if the
+    // window dies mid-send.
+    auto onUiThread = [&](const std::function<void()> &fn) {
+        if (editorAlive.load()) {
+            BMessage msg(EditorWindow::kMsgExec);
+            BMessage reply;
+            msg.AddPointer("fn", &fn);
+            if (editorMessenger.SendMessage(&msg, &reply) == B_OK)
+                return;
+        }
+        fn();
+    };
+
+    auto closeEditor = [&]() {
+        if (!editorAlive.load())
+            return;
+        editorMessenger.SendMessage(B_QUIT_REQUESTED);
+        for (int i = 0; i < 200 && editorAlive.load(); ++i)
+            snooze(10000);
+        if (editorAlive.load())
+            fprintf(stderr, "warning: editor window did not close in time\n");
+    };
+
+    auto repl = [&]() {
+        std::string line;
+        while (true) {
+            printf("> ");
+            fflush(stdout);
+            if (!std::getline(std::cin, line))
+                break;
+            std::istringstream iss(line);
+            std::string cmd;
+            iss >> cmd;
+            if (cmd.empty())
+                continue;
+            if (cmd == "quit" || cmd == "exit")
+                break;
+            if (cmd == "help") {
+                printHelp(fileLoader != nullptr);
+            } else if (cmd == "list") {
+                printClasses(factory);
+            } else if (cmd == "params") {
+                onUiThread([&]() { printParams(controller); });
+            } else if (cmd == "get") {
+                unsigned long id;
+                if (iss >> id)
+                    onUiThread([&]() { printParam(controller, static_cast<Vst::ParamID>(id)); });
+                else
+                    printf("usage: get <id>\n");
+            } else if (cmd == "set") {
+                unsigned long id;
+                double value;
+                if (iss >> id >> value) {
+                    if (value < 0.0 || value > 1.0) {
+                        printf("value must be normalized (0..1)\n");
+                        continue;
+                    }
+                    auto paramID = static_cast<Vst::ParamID>(id);
+                    onUiThread([&]() {
+                        // Keep the controller's view in sync, then hand the change
+                        // to the RT thread through the lock-free transfer.
+                        controller->setParamNormalized(paramID, value);
+                        audioClient->setParameter(paramID, value, 0);
+                        printParam(controller, paramID);
+                    });
+                } else {
+                    printf("usage: set <id> <normalized 0..1>\n");
+                }
+            } else if (cmd == "editor") {
+                std::string sub;
+                iss >> sub;
+                if (sub == "close") {
+                    if (editorAlive.load())
+                        closeEditor();
+                    else
+                        printf("no editor window is open\n");
                     continue;
                 }
-                auto paramID = static_cast<Vst::ParamID>(id);
-                // Keep the controller's view in sync, then hand the change to
-                // the RT thread through the lock-free transfer.
-                controller->setParamNormalized(paramID, value);
-                audioClient->setParameter(paramID, value, 0);
-                printParam(controller, paramID);
-            } else {
-                printf("usage: set <id> <normalized 0..1>\n");
-            }
-        } else if (cmd == "loadmodel" || cmd == "loadir") {
-            if (!fileLoader) {
-                printf("this plug-in does not support file loading\n");
-                continue;
-            }
-            std::string filePath;
-            std::getline(iss >> std::ws, filePath);
-            if (filePath.empty()) {
-                printf("usage: %s <path>\n", cmd.c_str());
-                continue;
-            }
-            tresult r = (cmd == "loadmodel") ? fileLoader->setModelFile(filePath.c_str())
-                                             : fileLoader->setIrFile(filePath.c_str());
-            printf("%s: %s\n", cmd.c_str(), r == kResultOk ? "ok" : "FAILED");
-        } else if (cmd == "clearmodel" || cmd == "clearir") {
-            if (!fileLoader) {
-                printf("this plug-in does not support file loading\n");
-                continue;
-            }
-            tresult r =
-                (cmd == "clearmodel") ? fileLoader->setModelFile("") : fileLoader->setIrFile("");
-            printf("%s: %s\n", cmd.c_str(), r == kResultOk ? "ok" : "FAILED");
-        } else if (cmd == "savestate") {
-            std::string filePath;
-            std::getline(iss >> std::ws, filePath);
-            if (filePath.empty()) {
-                printf("usage: savestate <file>\n");
-                continue;
-            }
-            MemoryStream stream;
-            if (component->getState(&stream) != kResultOk) {
-                printf("savestate: FAILED (plug-in refused getState)\n");
-                continue;
-            }
-            FILE *f = fopen(filePath.c_str(), "wb");
-            if (!f) {
-                printf("savestate: cannot open '%s' for writing\n", filePath.c_str());
-                continue;
-            }
-            auto size = static_cast<size_t>(stream.getSize());
-            bool ok = fwrite(stream.getData(), 1, size, f) == size;
-            ok = (fclose(f) == 0) && ok;
-            printf("savestate: %s (%zu bytes)\n", ok ? "ok" : "FAILED", size);
-        } else if (cmd == "loadstate") {
-            std::string filePath;
-            std::getline(iss >> std::ws, filePath);
-            if (filePath.empty()) {
-                printf("usage: loadstate <file>\n");
-                continue;
-            }
-            FILE *f = fopen(filePath.c_str(), "rb");
-            if (!f) {
-                printf("loadstate: cannot open '%s'\n", filePath.c_str());
-                continue;
-            }
-            // A state file is untrusted input: reject absurd sizes before
-            // allocating (the plug-in bounds-checks the contents itself).
-            constexpr long kMaxStateSize = 16 * 1024 * 1024;
-            long fileSize = -1;
-            if (fseek(f, 0, SEEK_END) == 0)
-                fileSize = ftell(f);
-            if (fileSize < 0 || fileSize > kMaxStateSize || fseek(f, 0, SEEK_SET) != 0) {
-                printf("loadstate: '%s' is not a usable state file\n", filePath.c_str());
+                if (editorAlive.load()) {
+                    printf("editor window is already open\n");
+                    continue;
+                }
+                IPlugView *view = controller->createView(Vst::ViewType::kEditor);
+                if (!view) {
+                    printf("plug-in has no editor\n");
+                    continue;
+                }
+                if (view->isPlatformTypeSupported(kPlatformTypeHaikuBView) != kResultTrue) {
+                    printf("plug-in editor does not support Haiku (kPlatformTypeHaikuBView)\n");
+                    view->release();
+                    continue;
+                }
+                editorAlive.store(true);
+                auto *window =
+                    new EditorWindow(className.c_str(), view, controller,
+                                     &audioClient->getOutputParamTransferrer(), &editorAlive);
+                editorMessenger = BMessenger(window);
+                window->Show();
+                printf("editor window opened\n");
+            } else if (cmd == "loadmodel" || cmd == "loadir") {
+                if (!fileLoader) {
+                    printf("this plug-in does not support file loading\n");
+                    continue;
+                }
+                std::string filePath;
+                std::getline(iss >> std::ws, filePath);
+                if (filePath.empty()) {
+                    printf("usage: %s <path>\n", cmd.c_str());
+                    continue;
+                }
+                onUiThread([&]() {
+                    tresult r = (cmd == "loadmodel") ? fileLoader->setModelFile(filePath.c_str())
+                                                     : fileLoader->setIrFile(filePath.c_str());
+                    printf("%s: %s\n", cmd.c_str(), r == kResultOk ? "ok" : "FAILED");
+                });
+            } else if (cmd == "clearmodel" || cmd == "clearir") {
+                if (!fileLoader) {
+                    printf("this plug-in does not support file loading\n");
+                    continue;
+                }
+                onUiThread([&]() {
+                    tresult r = (cmd == "clearmodel") ? fileLoader->setModelFile("")
+                                                      : fileLoader->setIrFile("");
+                    printf("%s: %s\n", cmd.c_str(), r == kResultOk ? "ok" : "FAILED");
+                });
+            } else if (cmd == "savestate") {
+                std::string filePath;
+                std::getline(iss >> std::ws, filePath);
+                if (filePath.empty()) {
+                    printf("usage: savestate <file>\n");
+                    continue;
+                }
+                onUiThread([&]() {
+                    MemoryStream stream;
+                    if (component->getState(&stream) != kResultOk) {
+                        printf("savestate: FAILED (plug-in refused getState)\n");
+                        return;
+                    }
+                    FILE *f = fopen(filePath.c_str(), "wb");
+                    if (!f) {
+                        printf("savestate: cannot open '%s' for writing\n", filePath.c_str());
+                        return;
+                    }
+                    auto size = static_cast<size_t>(stream.getSize());
+                    bool ok = fwrite(stream.getData(), 1, size, f) == size;
+                    ok = (fclose(f) == 0) && ok;
+                    printf("savestate: %s (%zu bytes)\n", ok ? "ok" : "FAILED", size);
+                });
+            } else if (cmd == "loadstate") {
+                std::string filePath;
+                std::getline(iss >> std::ws, filePath);
+                if (filePath.empty()) {
+                    printf("usage: loadstate <file>\n");
+                    continue;
+                }
+                FILE *f = fopen(filePath.c_str(), "rb");
+                if (!f) {
+                    printf("loadstate: cannot open '%s'\n", filePath.c_str());
+                    continue;
+                }
+                // A state file is untrusted input: reject absurd sizes before
+                // allocating (the plug-in bounds-checks the contents itself).
+                constexpr long kMaxStateSize = 16 * 1024 * 1024;
+                long fileSize = -1;
+                if (fseek(f, 0, SEEK_END) == 0)
+                    fileSize = ftell(f);
+                if (fileSize < 0 || fileSize > kMaxStateSize || fseek(f, 0, SEEK_SET) != 0) {
+                    printf("loadstate: '%s' is not a usable state file\n", filePath.c_str());
+                    fclose(f);
+                    continue;
+                }
+                std::vector<char> buffer(static_cast<size_t>(fileSize));
+                bool readOk = fread(buffer.data(), 1, buffer.size(), f) == buffer.size();
                 fclose(f);
-                continue;
+                if (!readOk) {
+                    printf("loadstate: short read from '%s'\n", filePath.c_str());
+                    continue;
+                }
+                onUiThread([&]() {
+                    // Same order a DAW uses on project load: the processor takes
+                    // the state, then the controller mirrors it.
+                    MemoryStream stream(buffer.data(), static_cast<TSize>(buffer.size()));
+                    if (component->setState(&stream) != kResultOk) {
+                        printf("loadstate: FAILED (plug-in refused the state)\n");
+                        return;
+                    }
+                    int64 pos = 0;
+                    stream.seek(0, IBStream::kIBSeekSet, &pos);
+                    if (controller->setComponentState(&stream) != kResultOk)
+                        printf("loadstate: warning: controller refused the state\n");
+                    printf("loadstate: ok (%ld bytes)\n", fileSize);
+                });
+            } else if (cmd == "files") {
+                if (!fileLoader) {
+                    printf("this plug-in does not support file loading\n");
+                    continue;
+                }
+                onUiThread([&]() {
+                    char model[1024] = "";
+                    char ir[1024] = "";
+                    fileLoader->getModelFile(model, sizeof(model));
+                    fileLoader->getIrFile(ir, sizeof(ir));
+                    printf("model: %s\nir:    %s\n", model[0] ? model : "(none)",
+                           ir[0] ? ir : "(none)");
+                });
+            } else {
+                printf("unknown command '%s' (try 'help')\n", cmd.c_str());
             }
-            std::vector<char> buffer(static_cast<size_t>(fileSize));
-            bool readOk = fread(buffer.data(), 1, buffer.size(), f) == buffer.size();
-            fclose(f);
-            if (!readOk) {
-                printf("loadstate: short read from '%s'\n", filePath.c_str());
-                continue;
-            }
-            // Same order a DAW uses on project load: the processor takes the
-            // state, then the controller mirrors it.
-            MemoryStream stream(buffer.data(), static_cast<TSize>(buffer.size()));
-            if (component->setState(&stream) != kResultOk) {
-                printf("loadstate: FAILED (plug-in refused the state)\n");
-                continue;
-            }
-            int64 pos = 0;
-            stream.seek(0, IBStream::kIBSeekSet, &pos);
-            if (controller->setComponentState(&stream) != kResultOk)
-                printf("loadstate: warning: controller refused the state\n");
-            printf("loadstate: ok (%ld bytes)\n", fileSize);
-        } else if (cmd == "files") {
-            if (!fileLoader) {
-                printf("this plug-in does not support file loading\n");
-                continue;
-            }
-            char model[1024] = "";
-            char ir[1024] = "";
-            fileLoader->getModelFile(model, sizeof(model));
-            fileLoader->getIrFile(ir, sizeof(ir));
-            printf("model: %s\nir:    %s\n", model[0] ? model : "(none)", ir[0] ? ir : "(none)");
-        } else {
-            printf("unknown command '%s' (try 'help')\n", cmd.c_str());
         }
-    }
+        closeEditor();
+        be_app->PostMessage(B_QUIT_REQUESTED);
+    };
+
+    std::thread replThread(repl);
+    app.Run();
+    replThread.join();
 
     printf("shutting down\n");
+    controller->setComponentHandler(nullptr);
     audioClient.reset();
+    plugProvider->disconnectDirect();
     return 0;
 }

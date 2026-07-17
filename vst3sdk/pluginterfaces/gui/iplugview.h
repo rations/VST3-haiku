@@ -84,6 +84,15 @@ const FIDString kPlatformTypeX11EmbedWindowID = "X11EmbedWindowID"; ///< X11 Win
  * IWaylandHost::openWaylandConnection().
  * See https://wayland.freedesktop.org/docs/html */
 const FIDString kPlatformTypeWaylandSurfaceID = "WaylandSurfaceID"; ///< Wayland Surface ID.
+
+/** The parent parameter in IPlugView::attached() is a BView pointer.
+ * You should attach a child BView to it (BView::AddChild()). The host guarantees that the
+ * parent view is attached to a BWindow and that this window's looper is locked while
+ * attached() and removed() are called; afterwards the view runs on the window's looper
+ * thread. There is no IRunLoop on Haiku: every BWindow owns a message loop thread, so
+ * plug-ins use BMessageRunner for timers. Coordinates are expressed in physical units
+ * (pixels), as with kPlatformTypeHWND and kPlatformTypeX11EmbedWindowID. */
+const FIDString kPlatformTypeHaikuBView = "HaikuBView"; ///< BView pointer. (Haiku)
 /**@}*/
 //------------------------------------------------------------------------
 
