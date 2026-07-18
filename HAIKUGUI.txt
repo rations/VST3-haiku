@@ -1,0 +1,183 @@
+===============================================================================
+ Native plug-in GUIs on Haiku — how VST3 editor support was added, and how to
+ build an editor on top of it
+===============================================================================
+
+VST3 plug-in GUIs use the IPlugView interface (pluginterfaces/gui/iplugview.h).
+The host creates a native window, hands the plug-in a native "parent" handle,
+and the plug-in draws its editor into a child of that handle. The SDK already
+defines parent handle types for Windows (HWND), macOS (NSView), X11 and
+Wayland — but none for Haiku, and there is no VSTGUI backend for the BeAPI.
+
+This port adds Haiku as a first-class IPlugView platform: one small, upstreamable
+SDK change defines the contract, a shared helper class implements the plug-in
+side of it, and the two hosts in this workspace embed the resulting editors. The
+"just the sliders" IEditController path still works everywhere; a native editor
+is strictly additive — a plug-in that returns no view keeps the generic controls.
+
+
+-------------------------------------------------------------------------------
+ 1. The port-side change: a new IPlugView platform type
+-------------------------------------------------------------------------------
+
+The entire vendored-SDK diff for GUI support is a single constant added beside
+the other platform types in pluginterfaces/gui/iplugview.h:
+
+    const FIDString kPlatformTypeHaikuBView = "HaikuBView"; // BView pointer. (Haiku)
+
+with a doc comment stating the contract the host and plug-in agree on:
+
+  * The `parent` passed to IPlugView::attached() is a `BView*`. The plug-in
+    attaches ONE child BView to it (BView::AddChild()).
+  * The host guarantees the parent BView is already attached to a BWindow, and
+    that this window's looper is LOCKED for the duration of attached() and
+    removed(). Afterwards the editor runs on that window's looper thread.
+  * There is no IRunLoop on Haiku (that is an X11/Wayland concept). Every
+    BWindow owns its own message-loop thread, so plug-ins schedule timers with
+    BMessageRunner instead of asking the host for a run loop.
+  * Coordinates are physical pixels, as with HWND and X11EmbedWindowID.
+
+Keeping the SDK change to one constant is deliberate: the diff against pristine
+upstream stays a single reviewable line, and everything behavioural lives in
+code we own, outside the vendored tree.
+
+
+-------------------------------------------------------------------------------
+ 2. The reusable plug-in-side helper: HaikuPlugView
+-------------------------------------------------------------------------------
+
+haiku/haikuplugview.h (this repo, OUTSIDE vst3sdk/) is a small base class every
+Haiku plug-in editor derives from. It implements the mechanical half of the
+kPlatformTypeHaikuBView contract so plug-ins only write drawing/interaction code.
+
+    class HaikuPlugView : public Vst::EditorView { ... };
+
+  * isPlatformTypeSupported() answers kResultTrue only for "HaikuBView".
+  * attachedToParent(): with the parent's looper locked (defensively re-locked
+    — BLooper locks are recursive), it calls the subclass hook createHaikuView()
+    to build the editor BView, AddChild()s it to the host's parent view, THEN
+    chains to EditorView::attachedToParent() so the controller's editorAttached()
+    fires only after the child view exists and can be pushed values immediately.
+  * removedFromParent(): notifies the controller FIRST (editorRemoved), so it
+    stops touching the view, then RemoveSelf()es and deletes the child view under
+    the looper lock.
+  * createHaikuView(BRect) is pure virtual — the ONE thing a subclass must
+    implement. It (and only it) may do app_server work (BView/BBitmap creation).
+    The constructor must stay inert so that IEditController::createView() is
+    harmless in headless hosts (the validator and REPL hosts construct the view
+    object without ever attaching a window).
+
+Plug-ins pick this up with a single include-dir line in their CMake:
+
+    target_include_directories(<plugin> PRIVATE "${VST3_SDK_DIR}/../haiku")
+
+
+-------------------------------------------------------------------------------
+ 3. The host side: embedding an editor
+-------------------------------------------------------------------------------
+
+Two hosts in this workspace open editors; both follow the same steps and neither
+needs an IRunLoop.
+
+vst3jackhost (hosts/vst3jackhost/source/editorwindow.cpp) — the `editor` REPL
+command opens an EditorWindow (a BWindow):
+
+  1. Query IPlugView::getSize(), size the window to it (fixed-size, v1 editors).
+  2. Create a plain parent BView filling the window and AddChild() it.
+  3. Provide an IPlugFrame (PlugFrame) so the plug-in can request resizes
+     (resizeView -> ResizeTo + IPlugView::onSize).
+  4. Call IPlugView::attached(parentBView, kPlatformTypeHaikuBView). A freshly
+     created BWindow is already looper-locked by the creating thread until
+     Show(), so attach happens under the lock as the contract requires.
+  5. Run a BMessageRunner at ~30 Hz that drains the RT->UI output-parameter ring
+     (ParameterChangeTransfer) into IEditController::setParamNormalized() — this
+     is how meters and other processor->editor feedback animate (see §5).
+  6. Tear down in QuitRequested()/destructor on the looper thread: setFrame(0),
+     IPlugView::removed(), release the view.
+
+jackDAW-haiku's FX window (src/ui/FxWindow.cpp, in the sibling DAW repo) embeds
+the same editor inside the per-track FX window, with a toggle between the native
+editor and the generic IEditController slider panel. Because attach is generic,
+a plug-in's editor appears there with no host code specific to that plug-in.
+
+
+-------------------------------------------------------------------------------
+ 4. Building an editor in a plug-in (worked pattern: NAMku, DRUMku)
+-------------------------------------------------------------------------------
+
+A plug-in adds a native editor with three pieces:
+
+(a) An editor view class deriving HaikuPlugView.
+      class MyEditorView : public Steinberg::HaikuPlugView {
+        MyEditorView(MyController* c) : HaikuPlugView(c, &fixedRect) {}
+        BView* createHaikuView(BRect frame) override { return new MyPanel(frame, ...); }
+      };
+    The ViewRect passed to the base ctor is the fixed editor size returned by
+    getSize().
+
+(b) The panel BView that actually draws. The established pattern (see NAMku's
+    source/namview.cpp and DRUMku's source/drumview.cpp):
+      * Locate the plug-in's own bundle at runtime with get_next_image_info()
+        (walk image ranges to find the .so that contains a marker symbol), then
+        read Contents/Resources/gui/<layer>.png next to it — NOT a hard-coded
+        path, so it works from any install dir.
+      * Load PNG layers with BTranslationUtils::GetBitmapFile() (Translation Kit).
+      * Composite into an offscreen BBitmap (B_BITMAP_ACCEPTS_VIEWS) and blit in
+        Draw() to avoid flicker.
+      * Draw static art as bitmaps; draw dynamic indicators (knob pointers/value
+        arcs, meter fills, switch state) in code with the BeAPI.
+      * Handle MouseDown/MouseMoved/MouseUp for knob drag and B_MOUSE_WHEEL_CHANGED
+        for scroll; edit parameters through the controller with
+        beginEdit()/setParamNormalized()/performEdit()/endEdit().
+
+(c) Controller wiring (see namcontroller.cpp / drumcontroller.cpp):
+      * createView(ViewType::kEditor) returns `new MyEditorView(this)`.
+      * editorAttached()/editorRemoved() cache/clear a raw view pointer.
+      * setParamNormalized() forwards the change to the cached view
+        (MyEditorView::ParamChanged) so the editor repaints. This runs on the
+        editor's looper thread — the same thread that created the view — so no
+        locking is needed between controller and view.
+
+
+-------------------------------------------------------------------------------
+ 5. Processor -> editor feedback (meters) without breaking the RT rules
+-------------------------------------------------------------------------------
+
+The audio processor may not call the controller or the editor directly (the
+controller is a UI-thread object; the RT thread must not allocate, lock, or log).
+Metering and similar "live" feedback use the SDK's normal output-parameter path:
+
+  * Declare hidden, read-only, transient parameters (never persisted) for the
+    values the editor needs — e.g. NAMku's input/output meter params, DRUMku's
+    per-pad activity params.
+  * In process(), write one point per value into data.outputParameterChanges
+    (guard the null case; the host pre-sizes the queue). This is a bounded,
+    allocation-free write on the RT thread.
+  * The host drains outputParameterChanges after each process block into a
+    lock-free ParameterChangeTransfer ring, and the editor's BMessageRunner tick
+    (§3, step 5) moves those into setParamNormalized() -> the view. RT stays
+    clean; the editor animates at UI rate.
+
+
+-------------------------------------------------------------------------------
+ 6. Art pipeline and packaging
+-------------------------------------------------------------------------------
+
+Editors ship pre-rendered PNG layers so the target never needs an SVG rasteriser:
+
+  * gui/geometry.sh          — single source of truth for canvas size, palette,
+                               and control rects; mirrored by hand into the
+                               plug-in's *geometry.h (constexpr).
+  * gui/make_assets.sh       — DEV-HOST ONLY (ImageMagick + rsvg-convert). Copies
+                               reusable raster art and rasterises SVG icons into
+                               resource/gui/*.png. The committed PNGs are what
+                               ship; the target has no rasteriser dependency.
+  * CMake: smtg_target_add_plugin_resources(<plugin> RESOURCES <pngs>
+           OUTPUT_SUBDIRECTORY gui) puts them under Contents/Resources/gui/, and
+           the plug-in links `be tracker translation` (Interface Kit, BFilePanel,
+           Translation Kit) and includes the haiku/ dir (§2).
+  * Fonts: a plug-in may bundle TTFs under resource/fonts/ and install them into
+           the user's non-packaged font directory on first editor open so the
+           app_server can select them (with a system-font fallback).
+
+Reused art must be license-compatible and attributed; see each plug-in's NOTICE.

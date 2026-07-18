@@ -14,6 +14,7 @@ endif()
 
 add_executable(vst3jackhost
     source/main.cpp
+    source/editorwindow.cpp
     ${AUDIOHOST_DIR}/source/media/audioclient.cpp
     ${AUDIOHOST_DIR}/source/media/jack/jackclient.cpp
     ${SDK_DIR}/public.sdk/source/vst/hosting/plugprovider.cpp
@@ -34,6 +35,7 @@ target_link_libraries(vst3jackhost
     PRIVATE
         sdk_hosting
         ${LIBJACK_LIBRARY}
+        be
 )
 set_target_properties(vst3jackhost
     PROPERTIES
