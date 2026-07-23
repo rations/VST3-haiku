@@ -26,8 +26,9 @@ against the SDK (no framework), is built automatically when checked out as a sib
 directory of this one (see the `NAMKU_DIR` cache variable).
 
 Plugin bundles use `<name>.vst3/Contents/x86_64-haiku/<name>.so` and are searched in the
-Haiku add-on directories (`.../config/non-packaged/add-ons/vst3`, packaged equivalents)
-plus `~/.vst3`.
+canonical Haiku add-on directory `add-ons/media/VST3` across every install root
+(`~/config/non-packaged/add-ons/media/VST3` and the packaged/system equivalents). No
+dot-folders — Haiku organises per-user files under the `~/config` hierarchy.
 
 ## Status
 

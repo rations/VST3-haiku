@@ -1,5 +1,5 @@
 name			vst3_haiku
-version			0.2.0-1
+version			0.3.0-1
 architecture	x86_64
 summary			"JACK VST3 host and example VST3 plug-ins (Haiku)"
 description		"A headless JACK VST3 host (vst3jackhost) built on the Haiku port of
@@ -16,8 +16,8 @@ licenses {
 	"MIT"
 }
 provides {
-	vst3_haiku = 0.2.0
-	cmd:vst3jackhost = 0.2.0
+	vst3_haiku = 0.3.0
+	cmd:vst3jackhost = 0.3.0
 }
 requires {
 	haiku

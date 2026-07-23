@@ -8,7 +8,7 @@ set -e
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
-VERSION=0.2.0
+VERSION=0.3.0
 REVISION=1
 STAGE="$HERE/stage"
 
@@ -21,7 +21,7 @@ rm -rf build "$STAGE"
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNAMKU_DIR=/nonexistent
 ninja -C build
 
-mkdir -p "$STAGE/bin" "$STAGE/add-ons/vst3"
+mkdir -p "$STAGE/bin" "$STAGE/add-ons/media/VST3"
 
 HOST=$(find build -type f -name vst3jackhost | head -1)
 [ -n "$HOST" ] || { echo "!! vst3jackhost not built (jack not found?)" >&2; exit 1; }
@@ -32,7 +32,7 @@ find build -type d -name '*.vst3' | while read -r b; do
 	case "$(basename "$b")" in
 		NAMku.vst3|DRUMku.vst3) continue ;;
 	esac
-	cp -r "$b" "$STAGE/add-ons/vst3/"
+	cp -r "$b" "$STAGE/add-ons/media/VST3/"
 done
 
 cp "$HERE/vst3_haiku.PackageInfo" "$STAGE/.PackageInfo"

@@ -7,7 +7,7 @@
 
 BUILD_DIR ?= build
 BUILD_TYPE ?= Release
-VST3_INSTALL_DIR ?= $(HOME)/config/non-packaged/add-ons/vst3
+VST3_INSTALL_DIR ?= $(HOME)/config/non-packaged/add-ons/media/VST3
 
 all: build
 

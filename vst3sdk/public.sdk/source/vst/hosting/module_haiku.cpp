@@ -240,38 +240,22 @@ Module::Ptr Module::create (const std::string& path, std::string& errorDescripti
 //------------------------------------------------------------------------
 Module::PathList Module::getModulePaths ()
 {
-	/* VST3 component locations on Haiku :
-	 * Add-on directories			: (user/system) x (packaged/non-packaged) add-ons/vst3,
-	 *								  e.g. /boot/home/config/non-packaged/add-ons/vst3/,
-	 *								  enumerated by find_paths() in precedence order
-	 * User privately installed		: $HOME/.vst3/
-	 * Application					: /$APPFOLDER/vst3/
+	/* VST3 component locations on Haiku: the canonical add-ons/media/VST3
+	 * directory across every install root - (user/system) x (packaged/
+	 * non-packaged), e.g. /boot/home/config/non-packaged/add-ons/media/VST3/ -
+	 * enumerated by find_paths() in precedence order. No dot-folders: Haiku
+	 * organises per-user files under the ~/config hierarchy.
 	 */
 
 	PathList list;
 
 	char** paths = nullptr;
 	size_t pathCount = 0;
-	if (find_paths (B_FIND_PATH_ADD_ONS_DIRECTORY, "vst3", &paths, &pathCount) == B_OK)
+	if (find_paths (B_FIND_PATH_ADD_ONS_DIRECTORY, "media/VST3", &paths, &pathCount) == B_OK)
 	{
 		for (size_t i = 0; i < pathCount; ++i)
 			findModules (paths[i], list);
 		free (paths);
-	}
-
-	if (auto homeDir = getenv ("HOME"))
-	{
-		filesystem::path homePath (homeDir);
-		homePath /= ".vst3";
-		findModules (homePath.generic_string (), list);
-	}
-
-	// application level
-	auto appPath = getApplicationPath ();
-	if (appPath)
-	{
-		*appPath /= "vst3";
-		findModules (appPath->generic_string (), list);
 	}
 
 	return list;
